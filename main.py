@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
-from enum import Enum
+
 import os
 import json
 from openai import OpenAI
@@ -40,13 +40,7 @@ app.add_middleware(
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class IntentCategory(str, Enum):
-    GENERAL_INTERACTION = "general_interaction"
-    CONCEPTUAL_UNDERSTANDING = "conceptual_understanding"
-    PROCEDURAL_DIFFICULTY = "procedural_difficulty"
-    MATH_ANXIETY = "math_anxiety"
-    PROBLEM_SOLVING_STRATEGY = "problem_solving_strategy"
-    REAL_WORLD_CONNECTION = "real_world_connection"
+
 
 class Message(BaseModel):
     role: str
@@ -56,10 +50,19 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[Message]
     new_message: str
+    include_colearner: Optional[bool] = False
 
 SYSTEM_PROMPT = """You are a Socratic math tutor for primary school students. Your role is to:
 1. First, identify the category of the student's input
 2. Then, respond with appropriate questions or prompts based on that category
+
+CRITICAL RULES:
+- NEVER give direct answers to math problems
+- ALWAYS use questions to guide students to discover answers themselves
+- Use the "correct_answer" category ONLY when the STUDENT provides a correct answer
+- If a student asks a new math problem, guide them with questions - don't solve it for them
+
+IMPORTANT: If a student provides a correct answer to the math problem he shared earlier, acknowledge their success and celebrate it! Don't keep questioning them about a problem they've already solved correctly.
 
 You must respond in JSON format with the following structure:
 {
@@ -113,7 +116,51 @@ Categories and Response Guidelines:
    - Example: "How might we use this when building or designing something?"
    - Use this category ONLY when the student questions the practical value of math
 
+6. correct_answer
+   - For: When the STUDENT provides a correct answer to a math problem (NOT when you give them the answer)
+   - ONLY use this category when the student has solved the problem themselves
+   - CELEBRATE their success with enthusiastic praise
+   - Acknowledge their correct reasoning or method
+   - Offer to explore a new problem or related concept
+   - Examples:
+     * "Excellent work! You got it exactly right! You showed great thinking when you [mention their method]. Would you like to try another problem?"
+     * "Perfect! That's the correct answer. I'm impressed by how you [specific praise about their approach]. Ready for a new challenge?"
+     * "Outstanding! You solved that beautifully. Your answer of [answer] is absolutely correct. What other math topic interests you?"
+   - NEVER continue questioning about a problem they've already solved correctly
+   - Always provide positive reinforcement and offer to move forward
+   - IMPORTANT: Do NOT use this category when the student asks a new problem - use problem_solving_strategy instead
+
 Remember to always format your response as a JSON object with 'category' and 'response' fields."""
+
+COLEARNER_PROMPT = """You are a funny and curious primary school student who is also learning math alongside another student. You are engaging in a three-way conversation with the user and a Socratic tutor. IMPORTANT: You don't know the final answers but you can share helpful hints, different ways to think, or useful ideas!
+
+Your personality:
+- Funny and encouraging - make learning fun
+- Share helpful hints without giving direct answers
+- Offer different ways to think about problems
+- Make useful observations or connections
+- Give gentle nudges in the right direction
+- Keep things light but constructive
+- Relate math to everyday things
+
+Guidelines:
+- NEVER give the final answer or complete solution
+- DO provide helpful hints, tips, or different perspectives
+- Share useful ways to think: "Maybe we could try using our fingers?" or "I remember my teacher saying to start with the smaller number"
+- Make helpful connections: "This reminds me of counting toys!" 
+- Offer gentle encouragement: "Let's figure this out together!"
+- Ask helpful questions: "What if we draw it out?" or "Should we break it into smaller pieces?"
+- Share useful tips: "I like to count slowly" or "Drawing pictures helps me"
+- Keep responses brief but valuable (1-2 sentences)
+- Be varied - don't repeat the same phrases
+
+You should respond in JSON format:
+{
+    "response": "your helpful, funny response with hints or tips"
+}
+
+Remember: You're the helpful study buddy who gives good hints and ideas without spoiling the answer. Be encouraging and constructive!
+"""
 
 @app.get("/")
 async def read_root():
@@ -122,9 +169,7 @@ async def read_root():
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     try:
-        logger.info("Received chat request")
-        
-        # Format messages for OpenAI
+        # Format messages for OpenAI (tutor response)
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         
         # Add conversation history
@@ -147,24 +192,44 @@ async def chat(request: ChatRequest):
         # Add the new message
         messages.append({"role": "user", "content": request.new_message})
         
-        logger.info(f"Sending request to OpenAI with {len(messages)} messages")
-        
-        # Get response from OpenAI
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",
+        # Get tutor response from OpenAI
+        tutor_response = client.chat.completions.create(
+            model="gpt-4.1-nano",
             response_format={ "type": "json_object" },
             messages=messages,
             temperature=0.7
         )
         
-        # Parse the response
-        response_content = json.loads(response.choices[0].message.content)
-        logger.info("Successfully received and parsed OpenAI response")
+        # Parse the tutor response
+        tutor_content = json.loads(tutor_response.choices[0].message.content)
         
-        return {
-            "response": response_content["response"],
-            "category": response_content["category"]
+        result = {
+            "response": tutor_content["response"],
+            "category": tutor_content["category"]
         }
+        
+        # If co-learner is included, generate co-learner response
+        if request.include_colearner:
+            # Create context for co-learner
+            colearner_context = f"The user just asked: '{request.new_message}'\nThe tutor responded: '{tutor_content['response']}'\n\nAs a fellow student, respond naturally to this conversation."
+            
+            colearner_messages = [
+                {"role": "system", "content": COLEARNER_PROMPT},
+                {"role": "user", "content": colearner_context}
+            ]
+            
+            # Get co-learner response
+            colearner_response = client.chat.completions.create(
+                model="gpt-4.1-nano",
+                response_format={ "type": "json_object" },
+                messages=colearner_messages,
+                temperature=0.8
+            )
+            
+            colearner_content = json.loads(colearner_response.choices[0].message.content)
+            result["colearner_response"] = colearner_content["response"]
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}", exc_info=True)

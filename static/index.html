@@ -9,33 +9,42 @@
   <body>
     <div class="app-container">
       <header>
-        <h1>🧮 Socratic Math Tutor</h1>
+        <h1>Socratic Math Tutor</h1>
+        <div class="co-learner-toggle">
+          <label class="toggle-container">
+            <span class="toggle-label">Add a Co-learner</span>
+            <input type="checkbox" id="coLearnerToggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </header>
 
       <main>
         <div class="chat-wrapper">
           <div class="chat-container" id="chatContainer">
-            <!-- Messages will be inserted here -->
+            <!-- Chat messages will be inserted here -->
           </div>
         </div>
 
         <div class="input-container">
-          <form id="chatForm" autocomplete="off">
-            <input
-              type="text"
-              id="messageInput"
-              placeholder="Ask a math question..."
-              aria-label="Type your message"
-            />
-            <button type="submit" aria-label="Send message">
-              <svg viewBox="0 0 24 24" width="24" height="24">
-                <path
-                  fill="currentColor"
-                  d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"
-                ></path>
-              </svg>
-            </button>
-          </form>
+          <div class="input-wrapper">
+            <form id="chatForm" autocomplete="off">
+              <input
+                type="text"
+                id="messageInput"
+                placeholder="Ask a math question..."
+                aria-label="Type your message"
+              />
+              <button type="submit" aria-label="Send message">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                  <path
+                    fill="currentColor"
+                    d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"
+                  ></path>
+                </svg>
+              </button>
+            </form>
+          </div>
         </div>
       </main>
     </div>
