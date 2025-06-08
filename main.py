@@ -194,7 +194,7 @@ async def chat(request: ChatRequest):
         
         # Get tutor response from OpenAI
         tutor_response = client.chat.completions.create(
-            model="gpt-4.1-nano",
+            model="gpt-3.5-turbo-1106",
             response_format={ "type": "json_object" },
             messages=messages,
             temperature=0.7
@@ -220,7 +220,7 @@ async def chat(request: ChatRequest):
             
             # Get co-learner response
             colearner_response = client.chat.completions.create(
-                model="gpt-4.1-nano",
+                model="gpt-3.5-turbo-1106",
                 response_format={ "type": "json_object" },
                 messages=colearner_messages,
                 temperature=0.8
